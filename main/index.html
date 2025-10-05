@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED Matrix Control</title>
+    <style>
+     body {
+       font-family: Arial, sans-serif;
+       display: flex;
+       flex-direction: column;
+       align-items: center;
+       padding: 20px;
+       background: #222;
+       color: #fff;
+     }
+     h1 {
+       margin-bottom: 20px;
+     }
+     #matrix {
+       display: grid;
+       grid-template-columns: repeat(16, 30px);
+       grid-template-rows: repeat(16, 30px);
+       gap: 2px;
+       margin: 20px 0;
+       background: #111;
+       padding: 10px;
+       border-radius: 5px;
+     }
+     .pixel {
+       width: 30px;
+       height: 30px;
+       background: #000;
+       border: 1px solid #333;
+       cursor: crosshair;
+     }
+     .controls {
+       display: flex;
+       gap: 10px;
+       margin: 20px 0;
+       align-items: center;
+     }
+     input[type="color"] {
+       width: 60px;
+       height: 40px;
+       border: none;
+       cursor: pointer;
+     }
+     button {
+       padding: 10px 20px;
+       font-size: 16px;
+       cursor: pointer;
+       background: #4CAF50;
+       color: white;
+       border: none;
+       border-radius: 5px;
+     }
+     button:hover {
+       background: #45a049;
+     }
+     #clear {
+       background: #f44336;
+     }
+     #clear:hover {
+       background: #da190b;
+     }
+    </style>
+  </head>
+  <body>
+    <h1>16x16 LED Matrix</h1>
+    
+    <div class="controls">
+      <label>Color: <input type="color" id="colorPicker" value="#ff0000"></label>
+      <button id="clear">Clear All</button>
+    </div>
+    
+    <div id="matrix"></div>
+
+    <div class="controls">
+    <label>Brightness: <input type="range" id="brightness" min="1" max="255" value="255"> <span id="brightnessValue">255</span></label>
+    </div>
+    
+    <script>
+     const matrix = document.getElementById('matrix');
+     const colorPicker = document.getElementById('colorPicker');
+     const clearBtn = document.getElementById('clear');
+
+     const brightnessSlider = document.getElementById('brightness');
+     const brightnessValue = document.getElementById('brightnessValue');
+        
+     brightnessSlider.addEventListener('input', function() {
+       brightnessValue.textContent = this.value;
+     });
+     
+     // create 16x16 grid
+     for (let y = 0; y < 16; y++) {
+       for (let x = 0; x < 16; x++) {
+         const pixel = document.createElement('div');
+         pixel.className = 'pixel';
+         const ledIndex = xyToIndex(x, y);
+         pixel.dataset.index = ledIndex;
+         pixel.dataset.x = x;
+         pixel.dataset.y = y;
+         
+         pixel.addEventListener('click', function() {
+           const color = hexToRgb(colorPicker.value);
+           setPixel(ledIndex, color.r, color.g, color.b);
+           this.style.background = colorPicker.value;
+         });
+         
+         // Draw on drag
+         pixel.addEventListener('mouseenter', function(e) {
+           if (e.buttons === 1) {
+             const color = hexToRgb(colorPicker.value);
+             setPixel(ledIndex, color.r, color.g, color.b);
+             this.style.background = colorPicker.value;
+           }
+         });
+         
+         matrix.appendChild(pixel);
+       }
+     }
+     
+     clearBtn.addEventListener('click', function() {
+       fetch('/off', {
+         method: 'POST'
+       }).catch(err => console.error('Error:', err));
+       document.querySelectorAll('.pixel').forEach(p => p.style.background = '#000');
+     });
+     
+     function hexToRgb(hex) {
+       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+       if (result) {
+         const brightness = parseInt(brightnessSlider.value) / 255;
+         return {
+           r: Math.round(parseInt(result[1], 16) * brightness),
+           g: Math.round(parseInt(result[2], 16) * brightness),
+           b: Math.round(parseInt(result[3], 16) * brightness)
+         };
+       }
+       return {r: 0, g: 0, b: 0};
+     }
+
+     function xyToIndex(x, y) {
+       if (y % 2 === 0) {
+         return y * 16 + x;
+       } else {
+         return y * 16 + (15 - x);
+       }
+     }
+
+     function setPixel(index, r, g, b) {
+       fetch('/pixel', {
+         method: 'POST',
+         body: JSON.stringify({index: index, r: r, g: g, b: b})
+       }).catch(err => console.error('Error:', err));
+     }
+    </script>
+  </body>
+</html>
