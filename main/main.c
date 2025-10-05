@@ -7,7 +7,9 @@
 #include "nvs_flash.h"
 #include "led_strip.h"
 #include "esp_log.h"
+#include "mdns.h"
 
+// Define your WIFI_SSID and WIFI_PASSWORD in a seperate header
 #include "wifi-creds.h"
 
 #define LED_GPIO    5
@@ -100,6 +102,14 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+    
+    // start mdns
+    ESP_ERROR_CHECK(mdns_init());
+    ESP_ERROR_CHECK(mdns_hostname_set("matrix"));
+    ESP_ERROR_CHECK(mdns_instance_name_set("LED Matrix"));
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+    ESP_LOGI(TAG, "mDNS started, hostname: matrix.local");
+    
     start_webserver();
   }
 }
