@@ -17,6 +17,7 @@
 
 static const char *TAG = "led_server";
 static led_strip_handle_t strip;
+static SemaphoreHandle_t led_mutex = NULL;
 
 // embedded html file
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
@@ -44,11 +45,14 @@ static esp_err_t set_pixel_handler(httpd_req_t *req) {
   sscanf(buf, "{\"index\":%d,\"r\":%d,\"g\":%d,\"b\":%d}", &index, &r, &g, &b);
     
   if (index >= 0 && index < LED_COUNT) {
-    led_strip_set_pixel(strip, index, r, g, b);
-    led_strip_refresh(strip);
-    httpd_resp_send(req, "OK", 2);
-  } else {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid index");
+    if (xSemaphoreTake(led_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      led_strip_set_pixel(strip, index, r, g, b);
+      led_strip_refresh(strip);
+      xSemaphoreGive(led_mutex);
+      httpd_resp_send(req, "OK", 2);
+    } else {
+      httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "LED busy");
+    }
   }
   return ESP_OK;
 }
@@ -63,6 +67,11 @@ static esp_err_t off_handler(httpd_req_t *req) {
 // start http server
 static httpd_handle_t start_webserver(void) {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.max_open_sockets = 7;
+  config.lru_purge_enable = true;
+  config.stack_size = 8192;
+  config.task_priority = 5;
+  config.keep_alive_enable = true;
   httpd_handle_t server = NULL;
 
   if (httpd_start(&server, &config) == ESP_OK) {
@@ -110,6 +119,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
     ESP_LOGI(TAG, "mDNS started, hostname: matrix.local");
     
+    // start server after connection is established
     start_webserver();
   }
 }
@@ -151,6 +161,7 @@ void app_main(void) {
         .resolution_hz = 10000000,
     };
     led_strip_new_rmt_device(&config, &rmt_config, &strip);
+    led_mutex = xSemaphoreCreateMutex();
     
     led_strip_clear(strip);
     led_strip_refresh(strip);

@@ -26,6 +26,10 @@
        background: #111;
        padding: 10px;
        border-radius: 5px;
+       user-select: none;
+       -webkit-user-select: none;
+       -moz-user-select: none;
+       -ms-user-select: none;
      }
      .pixel {
        width: 30px;
@@ -33,18 +37,72 @@
        background: #000;
        border: 1px solid #333;
        cursor: crosshair;
+       user-select: none;
+       -webkit-user-drag: none;
      }
      .controls {
        display: flex;
        gap: 10px;
-       margin: 20px 0;
+       margin: 10px 0;
        align-items: center;
+       flex-wrap: wrap;
+       justify-content: center;
+     }
+     .toolbar {
+       display: flex;
+       gap: 5px;
+       padding: 10px;
+       background: #333;
+       border-radius: 5px;
+       margin: 10px 0;
+     }
+     .tool-btn {
+       padding: 10px 15px;
+       font-size: 14px;
+       cursor: pointer;
+       background: #555;
+       color: white;
+       border: 2px solid #555;
+       border-radius: 5px;
+       transition: all 0.2s;
+     }
+     .tool-btn:hover {
+       background: #666;
+     }
+     .tool-btn.active {
+       background: #4CAF50;
+       border-color: #4CAF50;
+     }
+     .color-palette {
+       display: flex;
+       gap: 5px;
+       padding: 10px;
+       background: #333;
+       border-radius: 5px;
+       flex-wrap: wrap;
+       max-width: 600px;
+     }
+     .color-swatch {
+       width: 40px;
+       height: 40px;
+       border: 3px solid #555;
+       border-radius: 5px;
+       cursor: pointer;
+       transition: all 0.2s;
+     }
+     .color-swatch:hover {
+       transform: scale(1.1);
+     }
+     .color-swatch.active {
+       border-color: #fff;
+       box-shadow: 0 0 10px rgba(255,255,255,0.5);
      }
      input[type="color"] {
        width: 60px;
        height: 40px;
        border: none;
        cursor: pointer;
+       border-radius: 5px;
      }
      button {
        padding: 10px 20px;
@@ -64,35 +122,96 @@
      #clear:hover {
        background: #da190b;
      }
+
     </style>
   </head>
   <body>
     <h1>16x16 LED Matrix</h1>
     
+    <div class="toolbar">
+      <button class="tool-btn active" data-tool="pen">Pen</button>
+      <button class="tool-btn" data-tool="eraser">Eraser</button>
+      <button class="tool-btn" data-tool="circle">Circle</button>
+      <button class="tool-btn" data-tool="square">Square</button>
+    </div>
+
+
+    <div class="color-palette" id="colorPalette">
+      <div class="color-swatch active" style="background: #ff0000;" data-color="#ff0000"></div>
+      <div class="color-swatch" style="background: #ff6600;" data-color="#ff6600"></div>
+      <div class="color-swatch" style="background: #ffff00;" data-color="#ffff00"></div>
+      <div class="color-swatch" style="background: #00ff00;" data-color="#00ff00"></div>
+      <div class="color-swatch" style="background: #00ffff;" data-color="#00ffff"></div>
+      <div class="color-swatch" style="background: #0000ff;" data-color="#0000ff"></div>
+      <div class="color-swatch" style="background: #ff00ff;" data-color="#ff00ff"></div>
+      <div class="color-swatch" style="background: #ffffff;" data-color="#ffffff"></div>
+      <div class="color-swatch" style="background: #ff1493;" data-color="#ff1493"></div>
+      <div class="color-swatch" style="background: #ffa500;" data-color="#ffa500"></div>
+      <div class="color-swatch" style="background: #9acd32;" data-color="#9acd32"></div>
+      <div class="color-swatch" style="background: #00fa9a;" data-color="#00fa9a"></div>
+      <div class="color-swatch" style="background: #1e90ff;" data-color="#1e90ff"></div>
+      <div class="color-swatch" style="background: #9370db;" data-color="#9370db"></div>
+      <div class="color-swatch" style="background: #8b4513;" data-color="#8b4513"></div>
+      <div class="color-swatch" style="background: #808080;" data-color="#808080"></div>
+    </div>
+
     <div class="controls">
-      <label>Color: <input type="color" id="colorPicker" value="#ff0000"></label>
-      <button id="clear">Clear All</button>
+      <label>Custom Color: <input type="color" id="colorPicker" value="#ff0000"></label>
     </div>
     
     <div id="matrix"></div>
 
     <div class="controls">
-    <label>Brightness: <input type="range" id="brightness" min="1" max="255" value="255"> <span id="brightnessValue">255</span></label>
+      <label>Brightness: <input type="range" id="brightness" min="1" max="255" value="255"> <span id="brightnessValue">255</span></label>
+      <button id="clear">Clear All</button>
     </div>
     
     <script>
      const matrix = document.getElementById('matrix');
      const colorPicker = document.getElementById('colorPicker');
      const clearBtn = document.getElementById('clear');
-
      const brightnessSlider = document.getElementById('brightness');
      const brightnessValue = document.getElementById('brightnessValue');
-        
+     
+     let currentTool = 'pen';
+     let currentColor = '#ff0000';
+     let shapeStart = null;
+     let shapePreview = new Map();
+     let pixelColors = new Map();
+     
      brightnessSlider.addEventListener('input', function() {
        brightnessValue.textContent = this.value;
      });
      
-     // create 16x16 grid
+     // Tool selection
+     document.querySelectorAll('.tool-btn').forEach(btn => {
+       btn.addEventListener('click', function() {
+         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+         this.classList.add('active');
+         currentTool = this.dataset.tool;
+         matrix.style.cursor = currentTool === 'eraser' ? 'pointer' : 'crosshair';
+         clearShapePreview();
+         shapeStart = null;
+       });
+     });
+     
+     // Color palette selection
+     document.querySelectorAll('.color-swatch').forEach(swatch => {
+       swatch.addEventListener('click', function() {
+         document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+         this.classList.add('active');
+         currentColor = this.dataset.color;
+         colorPicker.value = currentColor;
+       });
+     });
+     
+     // Custom color picker
+     colorPicker.addEventListener('input', function() {
+       currentColor = this.value;
+       document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+     });
+     
+     // Create 16x16 grid
      for (let y = 0; y < 16; y++) {
        for (let x = 0; x < 16; x++) {
          const pixel = document.createElement('div');
@@ -102,18 +221,24 @@
          pixel.dataset.x = x;
          pixel.dataset.y = y;
          
-         pixel.addEventListener('click', function() {
-           const color = hexToRgb(colorPicker.value);
-           setPixel(ledIndex, color.r, color.g, color.b);
-           this.style.background = colorPicker.value;
+         pixel.addEventListener('mousedown', function(e) {
+           e.preventDefault();
+           handlePixelInteraction(this, true);
          });
          
-         // Draw on drag
          pixel.addEventListener('mouseenter', function(e) {
-           if (e.buttons === 1) {
-             const color = hexToRgb(colorPicker.value);
-             setPixel(ledIndex, color.r, color.g, color.b);
-             this.style.background = colorPicker.value;
+           if (e.buttons === 1 && currentTool !== 'circle' && currentTool !== 'square') {
+             handlePixelInteraction(this, false);
+           } else if (e.buttons === 1 && shapeStart && (currentTool === 'circle' || currentTool === 'square')) {
+             const x = parseInt(this.dataset.x);
+             const y = parseInt(this.dataset.y);
+             drawShapePreview(shapeStart.x, shapeStart.y, x, y);
+           }
+         });
+         
+         pixel.addEventListener('mouseup', function(e) {
+           if (currentTool === 'circle' || currentTool === 'square') {
+             finalizeShape(this);
            }
          });
          
@@ -121,11 +246,122 @@
        }
      }
      
+     function handlePixelInteraction(pixel, isMouseDown) {
+       const x = parseInt(pixel.dataset.x);
+       const y = parseInt(pixel.dataset.y);
+       const ledIndex = parseInt(pixel.dataset.index);
+       
+       if (currentTool === 'pen') {
+         const color = hexToRgb(currentColor);
+         setPixel(ledIndex, color.r, color.g, color.b);
+         pixel.style.background = currentColor;
+         pixelColors.set(pixel, currentColor);
+       } else if (currentTool === 'eraser') {
+         setPixel(ledIndex, 0, 0, 0);
+         pixel.style.background = '#000';
+         pixelColors.set(pixel, '#000');
+       } else if ((currentTool === 'circle' || currentTool === 'square') && isMouseDown) {
+         shapeStart = {x, y};
+         clearShapePreview();
+       }
+     }
+     
+     function drawShapePreview(x1, y1, x2, y2) {
+       clearShapePreview();
+       const pixels = currentTool === 'circle' ? 
+         getCirclePixels(x1, y1, x2, y2) : 
+         getSquarePixels(x1, y1, x2, y2);
+       
+       pixels.forEach(({x, y}) => {
+         const pixel = document.querySelector(`[data-x="${x}"][data-y="${y}"]`);
+         if (pixel) {
+           const originalColor = pixelColors.get(pixel) || '#000';
+           shapePreview.set(pixel, originalColor);
+           pixel.style.background = currentColor;
+           pixel.style.opacity = '0.6';
+         }
+       });
+     }
+     
+     function clearShapePreview() {
+       shapePreview.forEach((originalColor, pixel) => {
+         pixel.style.background = originalColor;
+         pixel.style.opacity = '1';
+       });
+       shapePreview.clear();
+     }
+     
+     function finalizeShape(endPixel) {
+       if (!shapeStart) return;
+       
+       const x2 = parseInt(endPixel.dataset.x);
+       const y2 = parseInt(endPixel.dataset.y);
+       const pixels = currentTool === 'circle' ? 
+         getCirclePixels(shapeStart.x, shapeStart.y, x2, y2) : 
+         getSquarePixels(shapeStart.x, shapeStart.y, x2, y2);
+       
+       clearShapePreview();
+       
+       pixels.forEach(({x, y}) => {
+         const pixel = document.querySelector(`[data-x="${x}"][data-y="${y}"]`);
+         if (pixel) {
+           const ledIndex = parseInt(pixel.dataset.index);
+           const color = hexToRgb(currentColor);
+           setPixel(ledIndex, color.r, color.g, color.b);
+           pixel.style.background = currentColor;
+           pixel.style.opacity = '1';
+           pixelColors.set(pixel, currentColor);
+         }
+       });
+       
+       shapeStart = null;
+     }
+     
+     function getSquarePixels(x1, y1, x2, y2) {
+       const pixels = [];
+       const minX = Math.min(x1, x2);
+       const maxX = Math.max(x1, x2);
+       const minY = Math.min(y1, y2);
+       const maxY = Math.max(y1, y2);
+       
+       for (let x = minX; x <= maxX; x++) {
+         pixels.push({x, y: minY});
+         pixels.push({x, y: maxY});
+       }
+       for (let y = minY; y <= maxY; y++) {
+         pixels.push({x: minX, y});
+         pixels.push({x: maxX, y});
+       }
+       
+       return pixels;
+     }
+     
+     function getCirclePixels(x1, y1, x2, y2) {
+       const pixels = [];
+       const centerX = x1;
+       const centerY = y1;
+       const radius = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+       
+       for (let y = 0; y < 16; y++) {
+         for (let x = 0; x < 16; x++) {
+           const dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+           if (Math.abs(dist - radius) < 0.8) {
+             pixels.push({x, y});
+           }
+         }
+       }
+       
+       return pixels;
+     }
+     
      clearBtn.addEventListener('click', function() {
        fetch('/off', {
          method: 'POST'
        }).catch(err => console.error('Error:', err));
-       document.querySelectorAll('.pixel').forEach(p => p.style.background = '#000');
+       document.querySelectorAll('.pixel').forEach(p => {
+         p.style.background = '#000';
+         pixelColors.set(p, '#000');
+       });
      });
      
      function hexToRgb(hex) {
